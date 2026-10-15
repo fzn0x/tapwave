@@ -486,3 +486,95 @@ current state or identify, device info, Wi-Fi scan, hostname, device name and ne
 
 mDNS announces `<hostname>.local` with `_http._tcp` and `_tapwave._tcp` (TXT: `version`, `id`).
 SNTP sets the clock so scan history and logs carry real timestamps; without it they show uptime.
+
+## 12. MQTT and Home Assistant
+
+**Implemented: MQTT with Home Assistant discovery.** The ESPHome native API is a stretch goal and
+is not implemented. With MQTT, Tapwave works with any broker and any home server, and Home
+Assistant creates the device and its entities on its own.
+
+The MQTT client is ESP-IDF's esp-mqtt (MQTT 3.1.1, optional TLS with the built-in certificate
+bundle). Every topic sits under a prefix, `mqtt.topic_prefix`, which defaults to `tapwave/<id>`.
+`<id>` is the last six hex digits of the Wi-Fi MAC address, so it survives renames.
+
+### Topics
+
+| Topic | Direction | Retained | Payload |
+| --- | --- | --- | --- |
+| `<prefix>/status` | out | yes | `online` or `offline` (last will) |
+| `<prefix>/tag/scanned` | out | no | Scan JSON, one message per scan |
+| `<prefix>/tag/last` | out | yes | Scan JSON of the most recent tag |
+| `<prefix>/tag/present` | out | yes | `ON` while a tag is on the reader, `OFF` after removal |
+| `<prefix>/tag/event` | out | no | `{"event_type": "scanned" or "removed" or "music", ...}` |
+| `<prefix>/diagnostics` | out | yes | `{"rssi", "ip", "uptime", "heap", "reader", "version"}` every 60 s |
+| `<prefix>/buzzer/state`, `<prefix>/led/state` | out | yes | `ON` or `OFF` |
+| `<prefix>/buzzer/set`, `<prefix>/led/set` | in | | `ON` or `OFF` |
+| `<prefix>/cmd/restart` | in | | any payload |
+| `<prefix>/cmd/identify` | in | | any payload: blink and beep |
+| `<prefix>/cmd/feedback` | in | | `ok` or `error`: confirmation beep and LED for the last scan |
+| `<prefix>/cmd/rtttl` | in | | An RTTTL melody for the buzzer |
+| `<prefix>/update/state` | out | yes | Update entity JSON (section 14) |
+| `<prefix>/update/install` | in | | `install` |
+| `<prefix>/cmd/write` | in | | Milestone 2: arm the writer with a URI |
+| `<prefix>/player/...` | both | | Milestone 3: media player state and commands |
+
+`cmd/feedback` and `cmd/rtttl` cover the `rfidreader_tag_ok`, `rfidreader_tag_ko` and
+`play_rtttl` services that tagreader users call from automations.
+
+Scan JSON:
+
+```json
+{
+  "id": "8f3b2c1e-6a5d-4d1e-9c0b-2f4e6a8b0c1d",
+  "uid": "04-A2-1B-3C-4D-5E-80",
+  "kind": "ha_tag",
+  "tag": "NTAG215",
+  "uri": "https://www.home-assistant.io/tag/8f3b2c1e-6a5d-4d1e-9c0b-2f4e6a8b0c1d",
+  "text": "Kitchen lights",
+  "records": [
+    {"tnf": 1, "type": "U", "uri": "https://www.home-assistant.io/tag/8f3b2c1e-..."},
+    {"tnf": 1, "type": "T", "lang": "en", "text": "Kitchen lights"}
+  ],
+  "reader": "tapwave-a1b2c3",
+  "time": "2026-10-15T08:30:12Z"
+}
+```
+
+`time` is present once SNTP has synced. Records that are neither URI nor Text carry `payload` as
+hex.
+
+### Discovery
+
+Discovery messages are retained and published per component to
+`<discovery_prefix>/<component>/tapwave_<id>/<key>/config` (`discovery_prefix` defaults to
+`homeassistant`). They are published on connect and again whenever Home Assistant announces
+`online` on `<discovery_prefix>/status`. Turning discovery off publishes empty retained payloads,
+which removes the entities. Every message carries the same `device` block (identifiers, MAC
+connection, name, model, firmware version, configuration URL) and an `origin` block.
+
+| Entity | Component | Key | Notes |
+| --- | --- | --- | --- |
+| Tag scanner | `tag` | `scanner` | `topic: <prefix>/tag/scanned`, `value_template: {{ value_json.id }}`. Home Assistant fires `tag_scanned` and the tag appears under Settings, Tags. |
+| Last tag | `sensor` | `last_tag` | State is the tag ID, attributes are the full scan JSON |
+| Tag present | `binary_sensor` | `tag_present` | |
+| Tag events | `event` | `tag_event` | Event types `scanned`, `removed`, `music` |
+| Buzzer | `switch` | `buzzer` | Configuration category |
+| Status LED | `switch` | `led` | Configuration category |
+| Restart | `button` | `restart` | Device class `restart` |
+| Identify | `button` | `identify` | Device class `identify` |
+| Firmware | `update` | `firmware` | Installs from the release manifest (section 14) |
+| Wi-Fi signal | `sensor` | `wifi_signal` | Diagnostic, dBm |
+| Reader | `sensor` | `reader` | Diagnostic: model and firmware, or `none` |
+| IP address | `sensor` | `ip` | Diagnostic |
+| Uptime | `sensor` | `uptime` | Diagnostic, seconds |
+| Media player | `media_player` | `player` | Milestone 3, when the player mode is on |
+
+Availability for every entity comes from `<prefix>/status`.
+
+### Moving from adonno/tagreader
+
+- UIDs use the same format, so existing tags keep working.
+- Home Assistant tag URLs report the same tag ID.
+- Music tags arrive as the `music` event type on the `tag_event` entity instead of the
+  `esphome.music_tag` event. They also fire `tag_scanned` with the UID, which tagreader did not do.
+- Tag removal arrives as the `removed` event type instead of `esphome.tag_removed`.

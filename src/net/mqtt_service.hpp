@@ -34,6 +34,9 @@ public:
     bool started() const { return client_ != nullptr; }
     bool connected() const { return connected_.load(); }
     std::string last_error() const;
+    // A stable code for last_error(): "unreachable", "auth", "refused" or "tls", for UIs that
+    // word the problem themselves.
+    std::string last_error_code() const;
     const mqtt::Topics& topics() const { return topics_; }
     const Settings& settings() const { return settings_; }
 
@@ -57,6 +60,7 @@ private:
     std::atomic<bool> connected_{false};
     mutable std::mutex mutex_;
     std::string last_error_;
+    std::string last_error_code_;
 };
 
 }  // namespace tapwave::net

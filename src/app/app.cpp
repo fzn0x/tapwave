@@ -713,6 +713,7 @@ std::string App::status_json() const {
         const std::string error = mqtt_.last_error();
         if (!error.empty() && !mqtt_.connected()) {
             m["error"] = error;
+            m["error_code"] = mqtt_.last_error_code();
         }
     }
 

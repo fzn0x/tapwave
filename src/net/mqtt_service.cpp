@@ -70,6 +70,11 @@ std::string MqttService::last_error() const {
     return last_error_;
 }
 
+std::string MqttService::last_error_code() const {
+    std::scoped_lock lock(mutex_);
+    return last_error_code_;
+}
+
 void MqttService::publish(const std::string& topic, const std::string& payload, bool retain) {
     if (!client_ || !connected_) {
         return;
@@ -89,6 +94,7 @@ void MqttService::handle(esp_mqtt_event_handle_t event) {
             {
                 std::scoped_lock lock(mutex_);
                 last_error_.clear();
+                last_error_code_.clear();
             }
             esp_mqtt_client_publish(client_, status_topic_.c_str(), "online", 6, 1, 1);
             for (const std::string& topic : topics_.subscriptions()) {
@@ -125,20 +131,24 @@ void MqttService::handle(esp_mqtt_event_handle_t event) {
         }
         case MQTT_EVENT_ERROR: {
             std::string reason = "the broker could not be reached";
+            std::string code = "unreachable";
             if (event->error_handle) {
                 if (event->error_handle->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
-                    reason = event->error_handle->connect_return_code ==
-                                     MQTT_CONNECTION_REFUSE_NOT_AUTHORIZED
-                                 ? "the broker refused the user name or password"
-                                 : "the broker refused the connection";
+                    const bool auth = event->error_handle->connect_return_code ==
+                                      MQTT_CONNECTION_REFUSE_NOT_AUTHORIZED;
+                    reason = auth ? "the broker refused the user name or password"
+                                  : "the broker refused the connection";
+                    code = auth ? "auth" : "refused";
                 } else if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT &&
                            event->error_handle->esp_tls_last_esp_err != ESP_OK) {
                     reason = "the TLS connection to the broker failed";
+                    code = "tls";
                 }
             }
             ESP_LOGW(kTag, "%s", reason.c_str());
             std::scoped_lock lock(mutex_);
             last_error_ = std::move(reason);
+            last_error_code_ = std::move(code);
             break;
         }
         default:

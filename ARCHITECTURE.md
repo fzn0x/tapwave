@@ -676,14 +676,14 @@ The `update` entity state:
 ## 15. Web UI
 
 The web UI lives in [`ui/`](ui): plain HTML, CSS and JavaScript modules with no framework and no
-network access beyond the device. `scripts/build_ui.py` gzips it into the LittleFS image. The
+network access beyond the device. Its tabs call tags "cards", the word a parent uses. `scripts/build_ui.py` gzips it into the LittleFS image. The
 firmware also contains a small recovery page, so a board flashed without the filesystem image can
 still upload one.
 
 | Page | Milestone 1 | Later |
 | --- | --- | --- |
-| Status | Device health, reader, Wi-Fi, MQTT, live last scan | Player controls (3) |
-| Tags | Recent scans with copyable IDs | Tag table, assign, write, import and export JSON (2) |
+| Home | The last card tapped (live), then one row each for the reader, Wi-Fi, Home Assistant and updates | Player controls (3) |
+| Cards | Recent scans with copyable IDs | Tag table, assign, write, import and export JSON (2) |
 | Library | Explains what it will do | SD card browser and upload (3) |
 | Settings | Modes, Wi-Fi, Home Assistant and MQTT, reader and pins, LED and buzzer, admin password, time | Audio, kids mode (3) |
 | Update | Version, check, install, upload | |

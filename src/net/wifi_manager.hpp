@@ -34,6 +34,7 @@ struct WifiStatus {
     bool ap_active = false;
     std::string ap_ssid;
     std::string ap_ip;
+    std::string attempt;  // last connect(): "", "pending", "succeeded" or "failed"
 };
 
 class WifiManager {

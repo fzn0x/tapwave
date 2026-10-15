@@ -140,6 +140,7 @@ void WifiManager::connect(std::string ssid, std::string password) {
     std::scoped_lock lock(mutex_);
     pending_ = Request{std::move(ssid), std::move(password)};
     attempt_ = improv::ConnectResult::Pending;
+    status_.attempt = "pending";
 }
 
 improv::ConnectResult WifiManager::attempt_result() const {
@@ -254,6 +255,7 @@ void WifiManager::loop(std::uint32_t now) {
                     trying_.reset();
                     std::scoped_lock lock(mutex_);
                     attempt_ = improv::ConnectResult::Succeeded;
+                    status_.attempt = "succeeded";
                 }
                 set_state(WifiState::Connected, now);
                 if (ap_active_) {
@@ -269,6 +271,7 @@ void WifiManager::loop(std::uint32_t now) {
                     {
                         std::scoped_lock lock(mutex_);
                         attempt_ = improv::ConnectResult::Failed;
+                        status_.attempt = "failed";
                     }
                     if (settings_.ssid.empty()) {
                         WiFi.disconnect(false, false);

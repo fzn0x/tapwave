@@ -694,6 +694,9 @@ std::string App::status_json() const {
         w["ip"] = wifi.ip;
         w["rssi"] = wifi.rssi;
     }
+    if (!wifi.attempt.empty()) {
+        w["attempt"] = wifi.attempt;  // the outcome of the last network tried from the UI or Improv
+    }
     JsonObject ap = w["access_point"].to<JsonObject>();
     ap["active"] = wifi.ap_active;
     ap["ssid"] = wifi.ap_ssid;

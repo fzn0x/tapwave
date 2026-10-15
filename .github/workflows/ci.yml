@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLATFORMIO_VERSION: "6.2.0"
+  CLANG_FORMAT_VERSION: "23.1.3"
+
+jobs:
+  unit-tests:
+    name: Unit tests (${{ matrix.env }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [native, native-asan]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.env }}-${{ hashFiles('platformio.ini') }}
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - run: pio test -e ${{ matrix.env }}
+
+  firmware:
+    name: Firmware (${{ matrix.env }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [esp32-4mb, esp32-8mb, esp32-16mb, esp32s3]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # git describe names the build
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: pio-device-${{ hashFiles('platformio.ini') }}
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - name: Build the firmware
+        run: pio run -e ${{ matrix.env }}
+      - name: Build the web UI filesystem image
+        run: pio run -e ${{ matrix.env }} -t buildfs
+      - name: Report sizes
+        run: python scripts/size_report.py ${{ matrix.env }} >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tapwave-${{ matrix.env }}
+          path: |
+            .pio/build/${{ matrix.env }}/firmware.bin
+            .pio/build/${{ matrix.env }}/firmware.factory.bin
+            .pio/build/${{ matrix.env }}/littlefs.bin
+          retention-days: 14
+
+  web-ui:
+    name: Web UI
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Test
+        working-directory: ui
+        run: npm test
+      - name: Check the gzipped size budget
+        run: python3 scripts/build_ui.py "$RUNNER_TEMP/www"
+
+  scripts:
+    name: Build scripts and mock box
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: python -m unittest discover -s scripts/tests -v
+
+  format:
+    name: Formatting
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install "clang-format==${CLANG_FORMAT_VERSION}"
+      - run: clang-format --dry-run --Werror $(git ls-files '*.cpp' '*.hpp')

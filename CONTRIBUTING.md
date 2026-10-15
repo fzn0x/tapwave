@@ -65,6 +65,7 @@ pio test -e native-asan                        # the same with AddressSanitizer 
 cd ui && npm test                              # web UI
 python -m unittest discover -s scripts/tests   # build scripts and the mock box
 pio run -e esp32-4mb                           # firmware build for the tightest board
+python scripts/smoke_test.py <box address> --tap 30   # a flashed box, end to end
 ```
 
 CI runs all of these on every pull request, builds all four board environments and posts the

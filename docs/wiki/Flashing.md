@@ -57,6 +57,26 @@ esptool --chip esp32 write-flash 0x0 firmware.factory.bin 0x3D0000 littlefs.bin
 The offsets come from the partition tables in
 [`partitions/`](https://github.com/fzn0x/tapwave/tree/main/partitions).
 
+## Check that it works
+
+`scripts/smoke_test.py` checks a flashed box over the network: status, reader, Wi-Fi, the web UI,
+the API's safety rules and the live WebSocket. It needs only Python.
+
+```sh
+python scripts/smoke_test.py tapwave-a1b2c3.local --tap 30
+```
+
+With `--tap` it asks you to tap a card and lift it, and checks both arrive. Add the broker to also
+check that the same scan reaches MQTT and that Home Assistant discovery is published:
+
+```sh
+python scripts/smoke_test.py tapwave-a1b2c3.local --tap 30 \
+  --mqtt homeassistant.local --mqtt-user tapwave --mqtt-password secret
+```
+
+Add `--password` if the box has an admin password. The box blinks and beeps once during the test;
+no settings are saved.
+
 ## If the web UI is missing
 
 When the firmware is flashed without the web UI, or the filesystem is damaged, the box serves a

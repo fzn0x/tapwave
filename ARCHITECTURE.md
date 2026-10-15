@@ -77,9 +77,10 @@ platform (Arduino-ESP32 3.3 on ESP-IDF 5.5). Each board environment fixes the ch
 | `esp32s3` | ESP32-S3 (N16R8) | 16 MB | 4096 KB | 8064 KB | 64 KB |
 
 The partition tables are in [`partitions/`](partitions). A partition table can only change through
-a USB reflash, so these sizes are a promise to every installed device. 4 MB boards keep OTA; if the
-milestone 4 build with Bluetooth audio does not fit 1920 KB, the 4 MB build will ship without
-Bluetooth audio rather than without OTA. That decision is measured, not guessed, in milestone 4.
+a USB reflash, so these sizes are a promise to every installed device. The milestone 1 firmware is
+1.77 MB, 90 % of the 4 MB slot. 4 MB boards keep OTA; if a later build with the audio engine and
+Bluetooth audio does not fit 1920 KB, the 4 MB build will ship without Bluetooth audio rather than
+without OTA. That decision is measured, not guessed, when it comes up.
 
 PSRAM is used when present (stream buffers, larger JSON documents). Boards without PSRAM run the
 tag reader; the audio player will require PSRAM.
@@ -750,7 +751,8 @@ The Tapwave column is honest about the present: **Yes** works in the current fir
 | C++ standard | C++23 (`gnu++23`) | The newest published ISO standard. C++26 is not yet published and GCC 14, the ESP32 toolchain, implements only parts of it. |
 | HTTP server | `esp_http_server` | Built into the framework (no dependency), Apache-2.0, WebSocket support. ESPAsyncWebServer would add two LGPL-3.0 libraries. |
 | MQTT client | esp-mqtt | Built in, runs in its own task, TLS and reconnects included. |
-| BLE stack | Arduino BLE (Bluedroid) | Milestone 4 needs Bluedroid for A2DP; NimBLE would have to be swapped out then. |
+| BLE stack | NimBLE-Arduino 2.5.1 | Measured on this platform, Bluedroid's BLE host adds about 760 KB and NimBLE's about 240 KB. With Bluedroid the milestone 1 firmware was 2.29 MB, 320 KB over the 1.92 MB OTA slot of 4 MB boards; with NimBLE it is 1.77 MB. Milestone 4's A2DP needs Bluedroid, so the BLE host is revisited there. |
+| Timestamps | UTC, formatted by `core/time_format` | With the PSRAM cache workaround the C library runs from IRAM; strftime, gmtime_r and tzset alone overflowed it by 4 KB. |
 | Home Assistant | MQTT discovery | Works with any broker and home server; the ESPHome native API stays a stretch goal. |
 | NFC drivers | Own protocol code over `Wire` and `SPI` | One interface for all readers, bounded timeouts instead of blocking waits, frame codecs tested on the host, no license mixing. |
 | Config storage | JSON blob in NVS | Atomic writes and wear levelling, and it survives reflashing the web UI filesystem. |

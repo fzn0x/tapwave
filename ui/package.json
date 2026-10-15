@@ -1,0 +1,12 @@
+{
+  "name": "tapwave-ui",
+  "private": true,
+  "type": "module",
+  "description": "The Tapwave web UI. No build step and no dependencies; tests run on Node's own test runner.",
+  "scripts": {
+    "test": "node --test \"tests/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

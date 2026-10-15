@@ -1,8 +1,6 @@
 #include "net/improv_ble.hpp"
 
-#include <BLE2902.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
+#include <NimBLEDevice.h>
 #include <esp_log.h>
 
 namespace tapwave::net {
@@ -22,31 +20,26 @@ constexpr std::uint16_t kServiceDataUuid = 0x4677;
 constexpr std::uint8_t kCapabilities = improv::kCapabilityIdentify | improv::kCapabilityDeviceInfo |
                                        improv::kCapabilityWifiScan | improv::kCapabilityHostname;
 
-class RpcCallbacks final : public BLECharacteristicCallbacks {
+class RpcCallbacks final : public NimBLECharacteristicCallbacks {
 public:
     explicit RpcCallbacks(ImprovBle& owner) : owner_(owner) {}
-    void onWrite(BLECharacteristic* characteristic) override {
-        const String value = characteristic->getValue();
-        owner_.on_rpc_write(reinterpret_cast<const std::uint8_t*>(value.c_str()), value.length());
+    void onWrite(NimBLECharacteristic* characteristic, NimBLEConnInfo&) override {
+        const NimBLEAttValue value = characteristic->getValue();
+        owner_.on_rpc_write(value.data(), value.size());
     }
 
 private:
     ImprovBle& owner_;
 };
 
-class ServerCallbacks final : public BLEServerCallbacks {
+class ServerCallbacks final : public NimBLEServerCallbacks {
 public:
-    void onDisconnect(BLEServer*) override { BLEDevice::startAdvertising(); }
+    void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override {
+        NimBLEDevice::getAdvertising()->start();  // stay discoverable for the next try
+    }
 };
 
-String as_string(ByteView bytes) {
-    String out;
-    out.reserve(bytes.size());
-    for (std::uint8_t b : bytes) {
-        out += static_cast<char>(b);
-    }
-    return out;
-}
+ServerCallbacks server_callbacks;
 
 }  // namespace
 
@@ -55,50 +48,50 @@ bool ImprovBle::begin(const std::string& device_name, improv::DeviceHooks hooks)
         return true;
     }
     name_ = device_name;
-    BLEDevice::init(name_.c_str());
-    server_ = BLEDevice::createServer();
-    if (!server_) {
+    if (!NimBLEDevice::init(name_)) {
         ESP_LOGE(kTag, "BLE did not start");
         return false;
     }
-    server_->setCallbacks(new ServerCallbacks());
-    BLEService* service = server_->createService(BLEUUID(kService), 20);
+    NimBLEServer* server = NimBLEDevice::createServer();
+    server->setCallbacks(&server_callbacks, /*deleteCallbacks=*/false);
+    NimBLEService* service = server->createService(kService);
 
-    auto readable = BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY;
+    const std::uint32_t readable = NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY;
     state_ = service->createCharacteristic(kStateUuid, readable);
-    state_->addDescriptor(new BLE2902());
     error_ = service->createCharacteristic(kErrorUuid, readable);
-    error_->addDescriptor(new BLE2902());
-    rpc_ = service->createCharacteristic(kRpcUuid, BLECharacteristic::PROPERTY_WRITE);
-    rpc_->setCallbacks(new RpcCallbacks(*this));
+    NimBLECharacteristic* rpc = service->createCharacteristic(kRpcUuid, NIMBLE_PROPERTY::WRITE);
+    rpc->setCallbacks(new RpcCallbacks(*this));  // owned and freed by NimBLE
     result_ = service->createCharacteristic(kResultUuid, readable);
-    result_->addDescriptor(new BLE2902());
-    capabilities_ =
-        service->createCharacteristic(kCapabilitiesUuid, BLECharacteristic::PROPERTY_READ);
-    std::uint8_t capabilities = kCapabilities;
-    capabilities_->setValue(&capabilities, 1);
+    NimBLECharacteristic* capabilities =
+        service->createCharacteristic(kCapabilitiesUuid, NIMBLE_PROPERTY::READ);
+    const std::uint8_t caps = kCapabilities;
+    capabilities->setValue(&caps, 1);
 
     improv::Output output;
-    output.state = [this](improv::State state) { notify_state(state); };
+    output.state = [this](improv::State state) {
+        const auto value = static_cast<std::uint8_t>(state);
+        state_->setValue(&value, 1);
+        state_->notify();
+    };
     output.error = [this](improv::Error error) {
-        std::uint8_t value = static_cast<std::uint8_t>(error);
+        const auto value = static_cast<std::uint8_t>(error);
         error_->setValue(&value, 1);
         error_->notify();
     };
     output.result = [this](std::uint8_t command, const std::vector<std::string>& strings) {
         const Bytes frame = improv::build_rpc_result(command, strings, /*with_checksum=*/true);
-        result_->setValue(const_cast<std::uint8_t*>(frame.data()), frame.size());
+        result_->setValue(frame.data(), frame.size());
         result_->notify();
     };
     session_ = std::make_unique<improv::Session>(improv::Transport::Ble, std::move(hooks),
                                                  std::move(output));
     session_->begin(/*provisioned=*/false);
-    std::uint8_t initial = static_cast<std::uint8_t>(session_->state());
+    const auto initial = static_cast<std::uint8_t>(session_->state());
     state_->setValue(&initial, 1);
-    std::uint8_t no_error = 0;
+    const std::uint8_t no_error = 0;
     error_->setValue(&no_error, 1);
 
-    service->start();
+    server->start();
     running_ = true;
     advertise();
     ESP_LOGI(kTag, "advertising as %s", name_.c_str());
@@ -107,25 +100,19 @@ bool ImprovBle::begin(const std::string& device_name, improv::DeviceHooks hooks)
 
 void ImprovBle::advertise() {
     // Improv 2.1: the service UUID and the service data share the advertisement itself.
-    BLEAdvertising* advertising = BLEDevice::getAdvertising();
+    NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
     advertising->stop();
-    BLEAdvertisementData data;
-    data.setFlags(0x06);  // general discoverable, no classic BR/EDR
-    data.setCompleteServices(BLEUUID(kService));
-    data.setServiceData(BLEUUID(kServiceDataUuid), as_string(improv::advertisement_service_data(
-                                                       session_->state(), kCapabilities)));
+    NimBLEAdvertisementData data;
+    data.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+    data.setCompleteServices(NimBLEUUID(kService));
+    data.setServiceData(NimBLEUUID(kServiceDataUuid),
+                        improv::advertisement_service_data(session_->state(), kCapabilities));
     advertising->setAdvertisementData(data);
-    BLEAdvertisementData scan_response;
-    scan_response.setName(name_.c_str());
+    NimBLEAdvertisementData scan_response;
+    scan_response.setName(name_);
     advertising->setScanResponseData(scan_response);
     advertising->start();
     advertised_ = session_->state();
-}
-
-void ImprovBle::notify_state(improv::State state) {
-    std::uint8_t value = static_cast<std::uint8_t>(state);
-    state_->setValue(&value, 1);
-    state_->notify();
 }
 
 void ImprovBle::on_rpc_write(const std::uint8_t* data, std::size_t size) {
@@ -161,13 +148,10 @@ void ImprovBle::stop() {
     if (!running_) {
         return;
     }
-    BLEDevice::getAdvertising()->stop();
-    // false keeps the controller memory reserved, so BLE can start again without a restart
-    // (after a factory reset, or for Bluetooth audio in milestone 4).
-    BLEDevice::deinit(false);
+    NimBLEDevice::getAdvertising()->stop();
+    NimBLEDevice::deinit(/*clearAll=*/true);
     running_ = false;
-    server_ = nullptr;
-    state_ = error_ = rpc_ = result_ = capabilities_ = nullptr;
+    state_ = error_ = result_ = nullptr;
     session_.reset();
     ESP_LOGI(kTag, "stopped");
 }

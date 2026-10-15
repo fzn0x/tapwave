@@ -706,3 +706,53 @@ next. It is mobile first, keyboard accessible and readable in light and dark mod
 Tags `v*` trigger the release workflow: it builds every environment, attaches app, filesystem and
 merged factory images to the GitHub release, and publishes the OTA manifest and the browser
 installer to GitHub Pages.
+
+## 17. Feature matrix
+
+Compared with the projects Tapwave draws from, as of October 2026. Facts come from each project's
+README, documentation and source; `?` marks something we could not confirm. Corrections are
+welcome as pull requests.
+
+The Tapwave column is honest about the present: **Yes** works in the current firmware,
+**Not yet (Mn)** is planned for milestone n.
+
+| Feature | Tapwave | ESPuino | Phoniebox v3 | TonUINO-TNG | adonno/tagreader |
+| --- | --- | --- | --- | --- | --- |
+| Hardware | ESP32 (WROVER); ESP32-S3 not yet (M4) | ESP32 with PSRAM | Raspberry Pi | Arduino Nano, Nano Every, AiO boards, Nano ESP32 | ESP8266 D1 mini (ESPHome) |
+| License | MIT | GPL-3.0 | MIT | GPL-3.0 | GPL-3.0 |
+| NFC readers | PN532 (I2C, SPI), RC522; PN5180 not yet (M4) | RC522, PN5180 | RC522, PN532 (I2C), RDM6300, USB, nfcpy | RC522 | PN532 (I2C) |
+| Reader picked at runtime | Yes, auto-detected | ? | Setup script | No, build time | No, build time |
+| Reads NDEF (URI, Text, MIME) | Yes | No, UID | No, card ID | No, own card format | Yes |
+| Cards carry their own instruction | Read and reported: yes. Acted on: not yet (M2) | No | No | Yes, own format | No, Home Assistant decides |
+| Writes cards | Not yet (M2) | No | No | Yes, from the admin menu | Yes, from Home Assistant |
+| Home Assistant | MQTT discovery: tag scanner, sensors, switches, update entity | MQTT, entities set up by hand | MQTT, entities set up by hand | No | ESPHome API, `tag_scanned` |
+| Music Assistant | Not yet (M2) | No | No | No | Yes, music tag events |
+| Plays from SD card | Not yet (M3) | Yes | Yes, local folders | Yes, through DFPlayer | No |
+| Web radio | Not yet (M3) | Yes | Yes | No | No |
+| Bluetooth audio | Not yet (M4) | A2DP sink and source | Bluetooth output | No | No |
+| Resume position per card | Not yet (M4) | Yes | Not yet in v3 | Remembers the track | No |
+| Volume limit, sleep timer | Not yet (M3) | Yes | Max volume, shutdown timer | Volume limits | No |
+| Buttons, rotary encoder, battery | Pins configurable: yes. Behaviour: not yet (M3) | Yes | GPIO buttons | Yes | No |
+| Web UI | Yes | Yes | Yes | ESP32 variant | No |
+| REST API | Yes | Yes | RPC | No | No, ESPHome API |
+| Firmware update | Web upload, Home Assistant, release manifest | Web upload | System updates | ? | ESPHome OTA |
+| Wi-Fi setup | Captive portal, Improv serial, Improv BLE | Access point | Raspberry Pi OS | Access point (ESP32 variant) | Captive portal |
+| Change pins without reflashing | Yes, in the web UI | No, `settings-*.h` | Config files | No | No, YAML |
+
+## 18. Decision log
+
+| Decision | Choice | Why |
+| --- | --- | --- |
+| Name and scheme | Tapwave, `tapwave://` | Chosen by the maintainer. `otp://` read as "one-time password" and tied the scheme to a working name. |
+| Framework | Arduino-ESP32 3.3 on pioarduino | Chosen by the maintainer. Large ecosystem, same base as ESPuino, and ESP-IDF APIs (esp-mqtt, NVS, OTA, esp_http_server) stay one include away. |
+| Minimum flash | 4 MB with OTA | Chosen by the maintainer. Cheap boards stay supported; bigger boards get bigger slots. |
+| UID format | Uppercase hex with dashes | Chosen by the maintainer. Matches ESPHome and tagreader, so migrating users keep their tags. |
+| C++ standard | C++23 (`gnu++23`) | The newest published ISO standard. C++26 is not yet published and GCC 14, the ESP32 toolchain, implements only parts of it. |
+| HTTP server | `esp_http_server` | Built into the framework (no dependency), Apache-2.0, WebSocket support. ESPAsyncWebServer would add two LGPL-3.0 libraries. |
+| MQTT client | esp-mqtt | Built in, runs in its own task, TLS and reconnects included. |
+| BLE stack | Arduino BLE (Bluedroid) | Milestone 4 needs Bluedroid for A2DP; NimBLE would have to be swapped out then. |
+| Home Assistant | MQTT discovery | Works with any broker and home server; the ESPHome native API stays a stretch goal. |
+| NFC drivers | Own protocol code over `Wire` and `SPI` | One interface for all readers, bounded timeouts instead of blocking waits, frame codecs tested on the host, no license mixing. |
+| Config storage | JSON blob in NVS | Atomic writes and wear levelling, and it survives reflashing the web UI filesystem. |
+| Unit tests | doctest | Header only, fast to compile, supported by PlatformIO. |
+| Web UI | No framework | Small enough to gzip into 128 KB of LittleFS, and contributors need only a browser and Python. |

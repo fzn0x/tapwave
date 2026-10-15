@@ -699,14 +699,16 @@ next. It is mobile first, keyboard accessible and readable in light and dark mod
 | `core` and `drivers/nfc/common` | doctest in the PlatformIO `native` environment | Every pull request, also with AddressSanitizer and UBSan |
 | NFC drivers over simulated tags | doctest with fake `Iso14443aReader` implementations | Every pull request |
 | Web UI modules | `node --test` | Every pull request |
-| Build scripts and dev server | Python `unittest` | Every pull request |
+| Build scripts, mock box, manifest and smoke test | Python `unittest` | Every pull request |
 | Firmware | `pio run` for every board environment, plus the filesystem image | Every pull request; size report in the job summary |
 | Formatting | clang-format | Every pull request |
 | Real hardware | `scripts/smoke_test.py` against a device on the network | By hand before a release |
 
 Tags `v*` trigger the release workflow: it builds every environment, attaches app, filesystem and
-merged factory images to the GitHub release, and publishes the OTA manifest and the browser
-installer to GitHub Pages.
+merged factory images with checksums to the GitHub release, and publishes the OTA manifest
+(`scripts/make_manifest.py`) to GitHub Pages. Pre-release tags (`v0.2.0-rc.1`) get a release but
+do not change the manifest. A browser installer (ESP Web Tools) on the same site is proposed, not
+built.
 
 ## 17. Feature matrix
 

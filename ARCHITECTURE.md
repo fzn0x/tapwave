@@ -161,14 +161,15 @@ public:
     // Model, bus and firmware version, for status pages and diagnostics.
     virtual const ReaderInfo& info() const = 0;
 
-    // Cheap presence check. Returns the UID of the tag in the field, or nullopt.
-    virtual std::optional<Uid> detect() = 0;
+    // Cheap presence check: the UID of the tag in the field, or nullopt when the field is empty.
+    // An error means the reader itself is in trouble (bus failure, no answer).
+    virtual std::expected<std::optional<Uid>, Error> detect() = 0;
 
     // Full read of the tag found by the last detect(): family, UID, ATQA, SAK, NDEF bytes.
     virtual std::expected<TagRead, Error> read() = 0;
 
     // Writes an NDEF message to the tag in the field (milestone 2).
-    virtual std::expected<void, Error> write_ndef(std::span<const std::uint8_t> message) = 0;
+    virtual std::expected<void, Error> write_ndef(ByteView message) = 0;
 };
 
 }  // namespace tapwave::nfc
@@ -184,11 +185,10 @@ public:
     virtual const ReaderInfo& info() const = 0;
     virtual std::expected<Target, Error> select() = 0;  // activate one Type A tag
     virtual std::expected<Block, Error> mifare_read(std::uint8_t block) = 0;  // 16 bytes
-    virtual std::expected<void, Error> ultralight_write(std::uint8_t page, Page data) = 0;
+    virtual std::expected<void, Error> ultralight_write(std::uint8_t page, const Page& data) = 0;
     virtual std::expected<void, Error> classic_auth(std::uint8_t block, KeyType type,
                                                     const ClassicKey& key) = 0;
-    virtual std::expected<Bytes, Error> transceive(std::span<const std::uint8_t> frame) = 0;
-    virtual void halt() = 0;
+    virtual std::expected<Bytes, Error> transceive(ByteView command) = 0;  // CRC added by the reader
 };
 ```
 
@@ -239,7 +239,7 @@ A new reader is one new file in `src/drivers/nfc/`. It implements `Iso14443aRead
 `TagReader` and registers itself:
 
 ```cpp
-TAPWAVE_REGISTER_NFC_DRIVER("mychip-spi", /*priority=*/40, probe_mychip);
+TAPWAVE_REGISTER_NFC_DRIVER("mychip-spi", /*priority=*/40, "MyChip on SPI", probe_mychip);
 ```
 
 The registry and auto-detection pick it up with no other edits. The

@@ -129,13 +129,13 @@ TEST_CASE("validate catches out-of-range and malformed values") {
     c.feedback.led_count = 0;
     c.feedback.led_brightness = 300;
     c.updates.manifest_url = "ftp://example.com";
-    c.time.timezone = "";
+    c.time.ntp_server = "";
     const auto issues = validate(c, Chip::Esp32, true);
     for (std::string_view path :
          {"device.name", "device.hostname", "wifi.password", "wifi.ap_password", "mqtt.host",
           "mqtt.port", "mqtt.topic_prefix", "mqtt.discovery_prefix", "nfc.driver",
           "nfc.poll_interval_ms", "nfc.removal_polls", "feedback.led_count",
-          "feedback.led_brightness", "updates.manifest_url", "time.timezone"}) {
+          "feedback.led_brightness", "updates.manifest_url", "time.ntp_server"}) {
         CHECK_MESSAGE(has_issue(issues, path), path);
     }
     CHECK(has_errors(issues));
@@ -197,7 +197,7 @@ TEST_CASE("save and load round-trip every field") {
     c.mqtt.enabled = true;
     c.mqtt.host = "10.0.0.2";
     c.pins.led = 48;
-    c.time.timezone = "CET-1CEST,M3.5.0,M10.5.0/3";
+    c.time.ntp_server = "time.cloudflare.com";
     const std::string stored = save(c);
     CHECK(stored.starts_with(R"({"v":1,)"));
     const LoadResult loaded = load(stored, Chip::Esp32S3);

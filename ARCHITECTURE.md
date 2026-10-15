@@ -433,7 +433,7 @@ Migrations are pure functions over a JSON document and each one has a host test.
 | `feedback` | `led`, `led_count`, `led_brightness`, `buzzer` |
 | `security` | `admin_password` |
 | `updates` | `check`, `manifest_url` |
-| `time` | `ntp_server`, `timezone` (POSIX TZ string) |
+| `time` | `ntp_server` (timestamps are UTC; the web UI shows them in the browser's time zone) |
 
 A pin of `-1` means "not connected". Pins are validated against the chip before they are saved:
 flash pins (GPIO 6 to 11 on the ESP32), PSRAM pins (GPIO 16 and 17 on WROVER modules) and

@@ -112,7 +112,6 @@ struct Config {
 
     struct Time {
         std::string ntp_server = "pool.ntp.org";
-        std::string timezone = "UTC0";  // POSIX TZ string
         friend bool operator==(const Time&, const Time&) = default;
     } time;
 
@@ -177,7 +176,6 @@ void for_each_field(C& c, F&& f) {
     f("updates", "check", c.updates.check, kNoFlags);
     f("updates", "manifest_url", c.updates.manifest_url, kNoFlags);
     f("time", "ntp_server", c.time.ntp_server, kNoFlags);
-    f("time", "timezone", c.time.timezone, kNoFlags);
 }
 
 // The defaults for a chip: bus pins follow the usual wiring for that chip's dev boards.

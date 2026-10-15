@@ -330,9 +330,6 @@ std::vector<Issue> validate(const Config& c, Chip chip, bool has_psram) {
     if (c.time.ntp_server.empty() || c.time.ntp_server.size() > 64) {
         error("time.ntp_server", "enter a time server, for example pool.ntp.org");
     }
-    if (c.time.timezone.empty() || c.time.timezone.size() > 64) {
-        error("time.timezone", "enter a POSIX time zone such as CET-1CEST,M3.5.0,M10.5.0/3");
-    }
     return issues;
 }
 

@@ -578,3 +578,131 @@ Availability for every entity comes from `<prefix>/status`.
 - Music tags arrive as the `music` event type on the `tag_event` entity instead of the
   `esphome.music_tag` event. They also fire `tag_scanned` with the UID, which tagreader did not do.
 - Tag removal arrives as the `removed` event type instead of `esphome.tag_removed`.
+
+## 13. HTTP API and WebSocket
+
+The HTTP server is ESP-IDF's `esp_http_server` with WebSocket support. All API responses are JSON.
+The web UI uses nothing else, so this table is also the list of things a script can do.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/status` | Device, firmware, uptime, memory, Wi-Fi, MQTT, reader, modes and the last scan |
+| `GET` | `/api/scans` | The last 20 scans, newest first |
+| `GET` | `/api/config` | Configuration, secrets redacted |
+| `PATCH` | `/api/config` | Merge a partial configuration. Returns the result and `restart_required`, or `422` with one error per invalid field |
+| `POST` | `/api/config/reset` | Factory reset, body `{"confirm": true}` |
+| `GET` | `/api/wifi/networks` | Nearby networks; starts a scan when the cached list is old |
+| `POST` | `/api/wifi` | Save `{"ssid", "password"}` and connect |
+| `GET` | `/api/reader` | Detected reader and the probe report |
+| `POST` | `/api/reader/detect` | Probe the buses again |
+| `POST` | `/api/device/restart` | Restart |
+| `POST` | `/api/device/identify` | Blink and beep |
+| `POST` | `/api/feedback` | `{"result": "ok" or "error"}` |
+| `POST` | `/api/buzzer/rtttl` | `{"melody": "<RTTTL>"}` |
+| `POST` | `/api/session` | `{"password"}`: sign in, sets a session cookie |
+| `DELETE` | `/api/session` | Sign out |
+| `GET` | `/api/update` | Installed and latest version, progress, last error |
+| `POST` | `/api/update/check` | Fetch the release manifest now |
+| `POST` | `/api/update/install` | Install the latest release from the manifest |
+| `POST` | `/api/update/firmware` | Upload a firmware image, `Content-Type: application/octet-stream` |
+| `POST` | `/api/update/filesystem` | Upload a web UI (LittleFS) image |
+| `GET` | `/ws` | WebSocket for live events |
+
+Milestones 2 and 3 add `/api/tags` (tag table, import and export), `/api/writer`, `/api/library`
+and `/api/player`.
+
+Errors use one shape: `{"error": {"code": "invalid_config", "message": "...", "details": [...]}}`
+with a matching HTTP status.
+
+**Access control.** With no admin password the API is open to the local network, like most home
+devices. With `security.admin_password` set, every endpoint except `GET /api/status` and
+`POST /api/session` needs either the session cookie (`HttpOnly`, `SameSite=Strict`) or HTTP Basic
+authentication with user `admin`, so scripts and `curl` keep working. Requests that change state
+must send `Content-Type: application/json` or `application/octet-stream`, which browsers do not
+allow other websites to send without a CORS preflight that the device never approves. Traffic is
+plain HTTP on the local network.
+
+**WebSocket.** The server pushes JSON messages; the client sends nothing.
+
+| `type` | Payload |
+| --- | --- |
+| `hello` | Firmware version and device ID, on connect |
+| `scan` | `scan`: the scan JSON from section 12 |
+| `removed` | `uid` |
+| `status` | `status`: the `/api/status` body, every 5 seconds and on change |
+| `update` | `update`: the `/api/update` body while an update runs |
+
+## 14. Firmware updates
+
+There are three ways to update, and all three end in the same code path:
+
+1. **Upload** a `.bin` in the web UI or with `POST /api/update/firmware` and
+   `POST /api/update/filesystem`.
+2. **Home Assistant** shows the `update` entity. Pressing Install publishes `install` on
+   `<prefix>/update/install`.
+3. **API**: `POST /api/update/install`.
+
+Routes 2 and 3 download from the release manifest at `updates.manifest_url` (default
+`https://fzn0x.github.io/tapwave/ota/manifest.json`, published by the release workflow):
+
+```json
+{
+  "version": "0.2.0",
+  "release_url": "https://github.com/fzn0x/tapwave/releases/tag/v0.2.0",
+  "builds": {
+    "esp32-4mb": {
+      "firmware": {"url": "https://...", "size": 1203456, "sha256": "..."},
+      "filesystem": {"url": "https://...", "size": 131072, "sha256": "..."}
+    }
+  }
+}
+```
+
+The device picks the entry for its own environment, streams the filesystem image and then the
+firmware over HTTPS (verified against the built-in certificate bundle), checks each SHA-256 while
+writing, and restarts. The new image boots in "pending verify" state and is marked valid once Wi-Fi
+has been up for 30 seconds. If it crashes or never gets online, the bootloader rolls back to the
+previous image on the next reset.
+
+The `update` entity state:
+
+```json
+{"installed_version": "0.1.0", "latest_version": "0.2.0", "title": "Tapwave",
+ "release_url": "https://github.com/fzn0x/tapwave/releases/tag/v0.2.0",
+ "in_progress": false, "update_percentage": null}
+```
+
+## 15. Web UI
+
+The web UI lives in [`ui/`](ui): plain HTML, CSS and JavaScript modules with no framework and no
+network access beyond the device. `scripts/build_ui.py` gzips it into the LittleFS image. The
+firmware also contains a small recovery page, so a board flashed without the filesystem image can
+still upload one.
+
+| Page | Milestone 1 | Later |
+| --- | --- | --- |
+| Status | Device health, reader, Wi-Fi, MQTT, live last scan | Player controls (3) |
+| Tags | Recent scans with copyable IDs | Tag table, assign, write, import and export JSON (2) |
+| Library | Explains what it will do | SD card browser and upload (3) |
+| Settings | Modes, Wi-Fi, Home Assistant and MQTT, reader and pins, LED and buzzer, admin password, time | Audio, kids mode (3) |
+| Update | Version, check, install, upload | |
+
+The UI is written for a parent setting up a box, not for a developer: plain words, one task per
+screen, pin numbers behind an "Advanced" toggle, and every error says what happened and what to do
+next. It is mobile first, keyboard accessible and readable in light and dark mode.
+
+## 16. Testing and CI
+
+| Layer | Tool | Runs |
+| --- | --- | --- |
+| `core` and `drivers/nfc/common` | doctest in the PlatformIO `native` environment | Every pull request, also with AddressSanitizer and UBSan |
+| NFC drivers over simulated tags | doctest with fake `Iso14443aReader` implementations | Every pull request |
+| Web UI modules | `node --test` | Every pull request |
+| Build scripts and dev server | Python `unittest` | Every pull request |
+| Firmware | `pio run` for every board environment, plus the filesystem image | Every pull request; size report in the job summary |
+| Formatting | clang-format | Every pull request |
+| Real hardware | `scripts/smoke_test.py` against a device on the network | By hand before a release |
+
+Tags `v*` trigger the release workflow: it builds every environment, attaches app, filesystem and
+merged factory images to the GitHub release, and publishes the OTA manifest and the browser
+installer to GitHub Pages.

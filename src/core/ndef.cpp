@@ -15,7 +15,7 @@ constexpr std::uint8_t kTnfMask = 0x07;
 
 // NFC Forum URI RTD, table 3: identifier codes 0x00 to 0x23. Codes above are reserved and
 // treated as "no prefix".
-constexpr std::array<std::string_view, 36> kUriPrefixes{
+constexpr auto kUriPrefixes = std::to_array<std::string_view>({
     "",
     "http://www.",
     "https://www.",
@@ -52,7 +52,8 @@ constexpr std::array<std::string_view, 36> kUriPrefixes{
     "urn:epc:raw:",
     "urn:epc:",
     "urn:nfc:",
-};
+});
+static_assert(kUriPrefixes.size() == 0x24);
 
 // Reads fields from the message, failing once anything would run past the end.
 class Reader {

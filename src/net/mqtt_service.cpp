@@ -71,7 +71,7 @@ std::string MqttService::last_error() const {
 }
 
 void MqttService::publish(const std::string& topic, const std::string& payload, bool retain) {
-    if (!client_ || (!connected_ && !retain)) {
+    if (!client_ || !connected_) {
         return;
     }
     esp_mqtt_client_enqueue(client_, topic.c_str(), payload.data(),

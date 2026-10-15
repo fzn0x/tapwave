@@ -31,13 +31,14 @@ public:
     void start(const Settings& settings);
     void stop();
 
+    bool started() const { return client_ != nullptr; }
     bool connected() const { return connected_.load(); }
     std::string last_error() const;
     const mqtt::Topics& topics() const { return topics_; }
     const Settings& settings() const { return settings_; }
 
-    // Queues a message (QoS 1). Safe from any task; dropped when not connected unless retained,
-    // because retained state is published again on every connect anyway.
+    // Queues a message (QoS 1) without blocking. Safe from any task. Dropped while
+    // disconnected: retained state is published again on every connect.
     void publish(const std::string& topic, const std::string& payload, bool retain);
 
     // Called on the MQTT task.

@@ -1,0 +1,103 @@
+name: Release
+
+# A tag such as v0.2.0 builds every board, attaches the images to a GitHub release and, for
+# releases that are not pre-releases, publishes the update manifest the boxes read
+# (ARCHITECTURE.md section 14) to GitHub Pages.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  PLATFORMIO_VERSION: "6.2.0"
+
+jobs:
+  build:
+    name: Build (${{ matrix.env }})
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        env: [esp32-4mb, esp32-8mb, esp32-16mb, esp32s3]
+    env:
+      TAPWAVE_VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: pio-device-${{ hashFiles('platformio.ini') }}
+      - run: pip install "platformio==${PLATFORMIO_VERSION}"
+      - run: pio run -e ${{ matrix.env }}
+      - run: pio run -e ${{ matrix.env }} -t buildfs
+      - name: Name the images
+        run: |
+          mkdir dist
+          build=".pio/build/${{ matrix.env }}"
+          cp "$build/firmware.bin" "dist/tapwave-${{ matrix.env }}-firmware.bin"
+          cp "$build/firmware.factory.bin" "dist/tapwave-${{ matrix.env }}-factory.bin"
+          cp "$build/littlefs.bin" "dist/tapwave-${{ matrix.env }}-littlefs.bin"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.env }}
+          path: dist/
+          retention-days: 7
+
+  release:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      prerelease: ${{ steps.kind.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - id: kind
+        run: echo "prerelease=${{ contains(github.ref_name, '-') }}" >> "$GITHUB_OUTPUT"
+      - name: Write the update manifest and checksums
+        run: |
+          python scripts/make_manifest.py --tag "${{ github.ref_name }}" --repo "${{ github.repository }}" \
+            --dist dist --out site/ota/manifest.json
+          (cd dist && sha256sum *.bin > SHA256SUMS)
+          cp site/ota/manifest.json dist/manifest.json
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          prerelease: ${{ steps.kind.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+      - uses: actions/configure-pages@v6
+        if: steps.kind.outputs.prerelease != 'true'
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.kind.outputs.prerelease != 'true'
+        with:
+          path: site
+
+  pages:
+    name: Publish the update manifest
+    needs: release
+    if: needs.release.outputs.prerelease != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}ota/manifest.json
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

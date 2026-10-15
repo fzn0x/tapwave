@@ -82,6 +82,9 @@ bool HttpServer::on(const char* uri, httpd_method_t method, Handler handler) {
 esp_err_t HttpServer::websocket_dispatch(httpd_req_t* req) {
     auto* self = static_cast<HttpServer*>(req->user_ctx);
     if (req->method == HTTP_GET) {
+        if (self->authorize_ && !self->authorize_(req)) {
+            return ESP_FAIL;  // closes the connection
+        }
         if (self->on_open_) {
             self->on_open_(httpd_req_to_sockfd(req));  // the handshake is done
         }
@@ -100,7 +103,9 @@ esp_err_t HttpServer::websocket_dispatch(httpd_req_t* req) {
     return frame.len > 512 ? ESP_FAIL : ESP_OK;
 }
 
-bool HttpServer::websocket(const char* uri, std::function<void(int fd)> on_open) {
+bool HttpServer::websocket(const char* uri, std::function<bool(httpd_req_t* req)> authorize,
+                           std::function<void(int fd)> on_open) {
+    authorize_ = std::move(authorize);
     on_open_ = std::move(on_open);
     httpd_uri_t route{};
     route.uri = uri;

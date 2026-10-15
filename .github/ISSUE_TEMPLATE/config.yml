@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/fzn0x/tapwave/discussions
+    about: Ask how to set something up, or talk through an idea before it becomes an issue.
+  - name: Security problem
+    url: https://github.com/fzn0x/tapwave/security/advisories/new
+    about: Report a vulnerability privately. Please do not open a public issue.
+  - name: Documentation
+    url: https://github.com/fzn0x/tapwave/wiki
+    about: Wiring, flashing, Home Assistant, MQTT, the REST API and troubleshooting.

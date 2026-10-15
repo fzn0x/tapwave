@@ -1,0 +1,69 @@
+name: Bug report
+description: Something does not work the way the docs say it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The more of this you can fill in, the faster it can be fixed.
+        The [troubleshooting page](https://github.com/fzn0x/tapwave/wiki/Troubleshooting) covers the most common problems.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Tap an NTAG215 with a Home Assistant tag URL
+        2. Open the Home page
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version
+      description: Shown on the Update page and in /api/status.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: board
+    attributes:
+      label: Board environment
+      options:
+        - esp32-4mb
+        - esp32-8mb
+        - esp32-16mb
+        - esp32s3
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Board and reader
+      placeholder: ESP32-WROVER-E DevKit, red PN532 module on I2C
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Reading cards
+        - Wi-Fi setup
+        - Home Assistant or MQTT
+        - Web UI
+        - REST API
+        - Updates
+        - Building or flashing
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Serial log
+      description: The output of `pio device monitor` around the problem, if you have it. Passwords are never printed, but check before pasting.
+      render: text

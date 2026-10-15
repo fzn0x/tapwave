@@ -1,0 +1,53 @@
+name: Hardware report
+description: Tell us how Tapwave ran on your board and reader, even if everything worked.
+labels: [hardware-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports from real hardware are the most useful contribution right now. They fill the list of tested boards and readers in the wiki.
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: board
+    attributes:
+      label: Board
+      description: The exact module and board, and which environment you flashed.
+      placeholder: ESP32-WROVER-E on a LilyGO T8, esp32-4mb
+    validations:
+      required: true
+  - type: input
+    id: reader
+    attributes:
+      label: Reader and bus
+      placeholder: RC522 (FM17522 clone) on SPI
+    validations:
+      required: true
+  - type: textarea
+    id: wiring
+    attributes:
+      label: Wiring
+      description: The pins you used, if they differ from the defaults.
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What worked
+      options:
+        - label: The reader was detected
+        - label: NTAG213, 215 or 216 cards read
+        - label: MIFARE Ultralight cards read
+        - label: MIFARE Classic cards read
+        - label: Wi-Fi setup through the setup network
+        - label: Wi-Fi setup through Improv (serial or Bluetooth)
+        - label: Home Assistant found the box and saw tag scans
+        - label: An update from the web UI
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Problems, read range, power supply quirks, photos of the setup.

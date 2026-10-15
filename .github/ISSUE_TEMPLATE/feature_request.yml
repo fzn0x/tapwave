@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest something Tapwave should do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the [milestones in ARCHITECTURE.md](https://github.com/fzn0x/tapwave/blob/main/ARCHITECTURE.md#2-milestones) first. Writing cards, local audio, Bluetooth and the PN5180 are already planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The situation and the problem, before any solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it could work
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead

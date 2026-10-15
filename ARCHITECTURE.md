@@ -276,3 +276,137 @@ class Decoder { /* probe, decode into PCM frames */ };
 GPL. Milestone 3 therefore uses permissively licensed decoders (for example minimp3, dr_flac and
 dr_wav, stb_vorbis, and an AAC decoder whose license allows MIT distribution). The final choice is
 a decision point at the start of milestone 3.
+
+## 8. Tags and the scan pipeline
+
+A tag is either **data-carrying** (the NDEF URI on the tag is the instruction, so it works with no
+server and no configuration) or **UID-mapped** (the device or the server looks the UID up). Every
+scan goes through the same pipeline:
+
+```
+read  ->  parse NDEF  ->  classify  ->  resolve (tag table, milestone 2)  ->  dispatch to modes
+```
+
+1. **Read.** `TagReader::read()` returns the UID, tag family, ATQA, SAK and the raw NDEF message.
+2. **Parse.** `core/ndef` decodes every record: well-known URI (with the NFC Forum prefix table)
+   and Text, MIME media records, absolute URIs and external types. Unknown records are kept as raw
+   bytes so nothing is lost on the way to Home Assistant.
+3. **Classify.** `core/scan` looks at all records and fills in the fields below. One tag can match
+   several, for example a card with both a Home Assistant tag URL and a `tapwave://` action.
+4. **Resolve** (milestone 2). An entry in the tag table, keyed by UID or Home Assistant tag ID,
+   overrides what the tag carries. A parent can re-map a pre-written card without rewriting it.
+5. **Dispatch.** Each enabled mode receives the scan: the player acts on `action`, Home Assistant
+   receives the scan on MQTT, the writer (when armed) writes instead of dispatching.
+
+| Field | Set when | Example |
+| --- | --- | --- |
+| `uid` | Always | `04-A2-1B-3C-4D-5E-80` |
+| `ha_tag_id` | A URI record is `https://www.home-assistant.io/tag/<id>` | `8f3b2c1e-...` |
+| `action` | A URI record uses the `tapwave:` scheme (section 9) | `sd`, `/Gruffalo` |
+| `music_uri` | A URI record is a music service or Music Assistant URI | `spotify://album/4aaw...` |
+| `uri` | The first URI record of any kind | `https://radio.example/live.mp3` |
+| `text` | The first Text record | `Gruffalo` |
+| `kind` | Always: the highest of `ha_tag`, `tapwave`, `music`, `url`, `text`, `uid` | `ha_tag` |
+| `id` | Always: the tag ID Home Assistant sees, `ha_tag_id` if set, otherwise `uid` | |
+
+**UID format.** UIDs are uppercase hex bytes joined by dashes, the format used by ESPHome and
+adonno/tagreader. People who move from tagreader keep their existing Home Assistant tags and
+automations.
+
+**Music URIs.** A URI is classified as music when it starts with a known service prefix
+(`https://open.spotify.com/`, `spotify:`, `https://music.apple.com/`, `sonos-2://`) or has the
+Music Assistant shape `<provider>://<media type>/<item>`, where the media type is one of `track`,
+`album`, `artist`, `playlist`, `radio`, `audiobook`, `podcast` or `folder`. Those are the URIs
+tagreader routes to Music Assistant, plus the generic Music Assistant form.
+
+**Removal.** A tag counts as removed after `nfc.removal_polls` consecutive polls without it
+(default 3, about half a second). Removal is reported so a box can pause when a card is lifted
+(milestone 3) and Home Assistant can react to it.
+
+## 9. The tapwave:// URI scheme
+
+The scheme lets a card carry its own instruction. It is open: other projects may read and write it,
+and this section is the specification.
+
+### Syntax
+
+```
+tapwave-uri = "tapwave://" action "/" target [ "?" options ]
+action      = 1*( ALPHA / DIGIT / "-" )          ; case-insensitive
+target      = *( pchar / "/" )                   ; RFC 3986 path characters
+options     = option *( "&" option )
+option      = key "=" value                       ; both percent-encoded
+```
+
+- Writers percent-encode `%`, `?`, `#`, spaces and every byte outside printable ASCII in the
+  target. `:` and `/` stay as they are, so a stream URL needs no encoding unless it has a query
+  string.
+- Readers split off the options at the first unencoded `?`, then percent-decode the target once.
+- Readers ignore options they do not know. A reader that does not know an action reports the scan
+  with `action.supported = false` and does nothing else.
+- The meaning of an existing action or option never changes. New behaviour gets a new action or a
+  new option. The scheme has no version number for that reason.
+
+### Actions
+
+| URI | Meaning | Options |
+| --- | --- | --- |
+| `tapwave://sd/<path>` | Play a file or folder from the SD card. A folder plays its audio files in natural name order. | `mode`, `track`, `volume` |
+| `tapwave://stream/<url>` | Play an HTTP or HTTPS stream. `.m3u` and `.pls` playlists are followed. | `volume` |
+| `tapwave://ha/<media_id>` | Ask Home Assistant to play `media_id`, usually through Music Assistant. | `player`, `enqueue`, `radio` |
+| `tapwave://cmd/<command>` | Control playback. | none |
+
+`mode` is one of `album` (default for folders: play in order once), `single`, `audiobook`
+(remember the position per tag, milestone 4), `shuffle` or `loop`. `track` is a 1-based start
+index. `volume` is 0 to 100 and is always capped by the kids-mode limit. `player` is a Home
+Assistant entity ID such as `media_player.kitchen`; `enqueue` is `play`, `next`, `add` or
+`replace`; `radio` is `true` or `false`.
+
+Commands for `cmd/`:
+
+| Command | Effect |
+| --- | --- |
+| `play`, `pause`, `toggle`, `stop` | Transport control |
+| `next`, `previous` | Skip |
+| `volume/<n>`, `volume/+<n>`, `volume/-<n>` | Set or change the volume (0 to 100) |
+| `sleep/<minutes>`, `sleep/off` | Sleep timer |
+| `shuffle/on`, `shuffle/off`, `shuffle/toggle` | Shuffle |
+| `repeat/off`, `repeat/one`, `repeat/all` | Repeat |
+
+When the player mode is off, `cmd/` and `ha/` scans are forwarded to Home Assistant as events, so a
+Home Assistant blueprint can apply them to any speaker.
+
+### Examples
+
+```
+tapwave://sd/Audiobooks/The%20Gruffalo?mode=audiobook
+tapwave://sd/Music/Lullabies?mode=shuffle&volume=30
+tapwave://stream/https://icecast.example.org/jazz.mp3
+tapwave://ha/spotify://playlist/37i9dQZF1DX4sWSpwq3LiO?player=media_player.kids_room
+tapwave://cmd/sleep/20
+tapwave://cmd/volume/-10
+```
+
+### Plain URIs
+
+- `https://www.home-assistant.io/tag/<id>` is a Home Assistant tag. Its ID is reported, the URL
+  is not played.
+- Music service and Music Assistant URIs are forwarded to Home Assistant (section 8).
+- Any other `http://` or `https://` URI plays locally when the player mode is on and the URL looks
+  like audio (`.mp3`, `.aac`, `.m4a`, `.ogg`, `.opus`, `.flac`, `.wav`, `.m3u`, `.pls`, or an
+  `audio/*` content type). Otherwise it is forwarded to Home Assistant.
+
+### Space on the tag
+
+Custom schemes have no NFC Forum prefix code, so the whole URI is stored. A URI record of up to
+249 characters costs 8 bytes of overhead (TLV, record header, prefix byte and terminator); longer
+URIs need the long TLV and record length fields and cost 13 bytes:
+
+| Tag | User memory | Longest `tapwave://` URI |
+| --- | --- | --- |
+| MIFARE Ultralight | 48 bytes | 40 characters |
+| NTAG213 | 144 bytes | 136 characters |
+| NTAG215 | 496 bytes | 483 characters |
+| NTAG216 | 872 bytes | 859 characters |
+
+The writer (milestone 2) refuses a URI that does not fit and says how many bytes over it is.

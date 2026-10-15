@@ -21,7 +21,7 @@ UI_GZIP_SUFFIXES = {".html", ".css", ".js", ".mjs", ".svg", ".json", ".webmanife
 
 # Text assets where the placeholder is replaced with the firmware version.
 UI_VERSION_PLACEHOLDER = "__TAPWAVE_VERSION__"
-UI_VERSIONED_SUFFIXES = {".html", ".js", ".mjs"}
+UI_VERSIONED_SUFFIXES = {".html", ".css", ".js", ".mjs"}
 
 _DESCRIBE = re.compile(
     r"^v?(?P<tag>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+?)??)"

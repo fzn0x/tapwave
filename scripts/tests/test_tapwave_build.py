@@ -70,6 +70,7 @@ class BuildUiTest(unittest.TestCase):
         (self.src / "js" / "format.test.js").write_text("test")
         (self.src / "tests" / "helper.js").write_text("test")
         (self.src / "icon.png").write_bytes(b"\x89PNG")
+        (self.src / "app.css").write_text("@font-face{src:url(f.woff2?v=__TAPWAVE_VERSION__)}")
 
     def test_text_assets_are_gzipped_with_the_version_inlined(self):
         tapwave_build.build_ui(self.src, self.dest, "1.2.3")
@@ -77,6 +78,8 @@ class BuildUiTest(unittest.TestCase):
         self.assertEqual(html, "<p>v1.2.3</p>")
         js = gzip.decompress((self.dest / "js" / "app.js.gz").read_bytes()).decode()
         self.assertIn("'1.2.3'", js)
+        css = gzip.decompress((self.dest / "app.css.gz").read_bytes()).decode()
+        self.assertIn("f.woff2?v=1.2.3", css)
         self.assertFalse((self.dest / "index.html").exists())
 
     def test_binary_assets_are_copied_unchanged(self):
@@ -86,7 +89,7 @@ class BuildUiTest(unittest.TestCase):
     def test_tests_are_left_out(self):
         written = tapwave_build.build_ui(self.src, self.dest, "1.2.3")
         paths = {f.path for f in written}
-        self.assertEqual(paths, {"index.html", "js/app.js", "icon.png"})
+        self.assertEqual(paths, {"index.html", "js/app.js", "icon.png", "app.css"})
 
     def test_output_is_reproducible(self):
         tapwave_build.build_ui(self.src, self.dest, "1.2.3")

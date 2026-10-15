@@ -63,6 +63,14 @@ class MockDeviceTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(body["restart_required"])
 
+    def test_changes_must_say_they_are_json(self):
+        req = urllib.request.Request(self.base + "/api/device/identify", data=b"{}", method="POST",
+                                     headers={"Content-Type": "text/plain"})
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(caught.exception.code, 415)
+        self.assertEqual(json.loads(caught.exception.read())["error"]["code"], "unsupported_media_type")
+
     def test_unknown_endpoints_answer_json_404(self):
         status, body = self.request("GET", "/api/nope")
         self.assertEqual(status, 404)

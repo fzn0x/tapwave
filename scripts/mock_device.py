@@ -357,11 +357,24 @@ def make_handler(box: Box, version: str):
         def signed_in(self, path: str) -> bool:
             if not box.admin_password or path in ("/api/status", "/api/session"):
                 return True
-            return SESSION in (self.headers.get("Cookie") or "")
+            basic = "Basic " + base64.b64encode(f"admin:{box.admin_password}".encode()).decode()
+            return SESSION in (self.headers.get("Cookie") or "") or self.headers.get("Authorization") == basic
 
         def refuse(self) -> None:
             self.close_connection = True  # the request body, if any, is never read
             self.send_json(401, {"error": {"code": "unauthorized", "message": "Sign in with the admin password first."}})
+
+        # Like the firmware, a change must say it is JSON (or an image), which other websites
+        # cannot send without a CORS preflight.
+        def right_type(self, path: str) -> bool:
+            upload = path.startswith("/api/update/") and path.split("/")[-1] in ("firmware", "filesystem")
+            expected = "application/octet-stream" if upload else "application/json"
+            if (self.headers.get("Content-Type") or "").startswith(expected):
+                return True
+            self.close_connection = True
+            self.send_json(415, {"error": {"code": "unsupported_media_type",
+                                           "message": f"Send this request with Content-Type: {expected}."}})
+            return False
 
         def session(self) -> None:
             if not box.admin_password:
@@ -406,6 +419,8 @@ def make_handler(box: Box, version: str):
         def do_PATCH(self):
             if not self.signed_in(self.path):
                 return self.refuse()
+            if not self.right_type(self.path):
+                return None
             if self.path == "/api/config":
                 with box.lock:
                     status, body = box.patch(self.body())
@@ -416,6 +431,8 @@ def make_handler(box: Box, version: str):
             path = self.path.split("?", 1)[0]
             if not self.signed_in(path):
                 return self.refuse()
+            if not self.right_type(path):
+                return None
             if path == "/api/session":
                 return self.session()
             if path.startswith("/api/update/") and path.split("/")[-1] in ("firmware", "filesystem"):
@@ -435,6 +452,12 @@ def make_handler(box: Box, version: str):
                 if path == "/api/device/restart":
                     box.restart_required = False
                 return self.send_json(202, {"ok": True})
+            self.send_json(404, {"error": {"code": "not_found", "message": "There is no such API endpoint."}})
+
+        def do_DELETE(self):
+            if self.path == "/api/session":
+                return self.send_json(200, {"ok": True},
+                                      cookie="tapwave_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
             self.send_json(404, {"error": {"code": "not_found", "message": "There is no such API endpoint."}})
 
         def static(self, path: str) -> None:

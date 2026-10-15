@@ -10,6 +10,9 @@
 
 namespace tapwave::nfc {
 
+// The longest response Tapwave asks for: InListPassiveTarget with a 10-byte UID is 25 bytes.
+inline constexpr std::size_t kPn532MaxFrame = 64;
+
 // Moves PN532 frames over one bus. Implementations wait for the chip's ready signal and strip
 // bus framing (the I2C status byte, the SPI direction byte).
 class Pn532Transport {
@@ -24,7 +27,9 @@ public:
     virtual std::expected<void, Error> write(ByteView frame) = 0;
 
     // Waits until the chip has data, then reads one complete frame (ACK, NACK or data).
-    virtual std::expected<Bytes, Error> read(std::uint32_t timeout_ms) = 0;
+    // `max_length` bounds the frame: 6 for an ACK, larger for responses. Buses that cannot
+    // stop mid-frame (I2C) read that many bytes and cut the frame out of them.
+    virtual std::expected<Bytes, Error> read(std::uint32_t timeout_ms, std::size_t max_length) = 0;
 
     virtual void sleep_ms(std::uint32_t ms) = 0;
 };

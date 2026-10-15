@@ -43,7 +43,7 @@ std::expected<Bytes, Error> Pn532::command(std::uint8_t code, ByteView params,
         if (auto written = transport_->write(frame); !written) {
             return std::unexpected(written.error());
         }
-        const auto ack = transport_->read(kAckTimeoutMs);
+        const auto ack = transport_->read(kAckTimeoutMs, pn532::kAck.size());
         if (!ack) {
             return std::unexpected(ack.error());
         }
@@ -56,7 +56,7 @@ std::expected<Bytes, Error> Pn532::command(std::uint8_t code, ByteView params,
         }
     }
 
-    const auto raw = transport_->read(timeout_ms);
+    const auto raw = transport_->read(timeout_ms, kPn532MaxFrame);
     if (!raw) {
         return std::unexpected(raw.error());
     }

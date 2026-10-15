@@ -53,12 +53,13 @@ public:
         return {};
     }
 
-    std::expected<Bytes, Error> read(std::uint32_t) override {
+    std::expected<Bytes, Error> read(std::uint32_t, std::size_t max_length) override {
         if (outbox_.empty()) {
             return std::unexpected(Error::Timeout);
         }
         Bytes out = std::move(outbox_.front());
         outbox_.pop_front();
+        REQUIRE(out.size() <= max_length);
         return out;
     }
 

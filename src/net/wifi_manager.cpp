@@ -154,7 +154,7 @@ void WifiManager::start_scan() {
 
 std::optional<std::vector<improv::Network>> WifiManager::networks() const {
     std::scoped_lock lock(mutex_);
-    if (scan_running_ || scan_requested_ || !have_networks_) {
+    if (!have_networks_) {
         return std::nullopt;
     }
     return networks_;

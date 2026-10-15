@@ -60,7 +60,7 @@ public:
     improv::ConnectResult attempt_result() const;
 
     void start_scan();
-    // Networks from a recent scan, strongest first; nullopt while a scan runs or before one.
+    // Networks from the last scan, strongest first; nullopt before the first scan finishes.
     std::optional<std::vector<improv::Network>> networks() const;
     bool scanning() const;
     // True when there are no scan results or they are older than kScanMaxAgeMs.

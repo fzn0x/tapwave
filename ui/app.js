@@ -483,7 +483,7 @@ function cardsPage() {
       },
       h("span", { class: "item-icon" }, icon(KIND_ICON[scan.kind] || "cards")),
       h("span", { class: "item-text" }, h("span", { class: "item-title", text: described.title }), h("span", { class: "item-detail", text: `${scan.id} · ${scanTime(scan)}` })),
-      h("span", { class: "item-end" }, scan.ndef_error ? h("span", { class: "chip", "data-tone": "warn", text: "!" }) : "", icon("chevron"))
+      h("span", { class: "item-end" }, scan.ndef_error ? h("span", { class: "chip", "data-tone": "warn", text: t("chip.problem") }) : "", icon("chevron"))
     );
     return h("li", {}, button, details);
   }

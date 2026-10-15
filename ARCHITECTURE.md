@@ -410,3 +410,79 @@ URIs need the long TLV and record length fields and cost 13 bytes:
 | NTAG216 | 872 bytes | 859 characters |
 
 The writer (milestone 2) refuses a URI that does not fit and says how many bytes over it is.
+
+## 10. Configuration
+
+The configuration is one JSON document stored as a blob in NVS (namespace `tapwave`, key
+`config`). It carries a schema version in `"v"`. The current version is **1**.
+
+On boot `core/config` parses the blob, runs every migration from the stored version to the current
+one (`migrate_v1_to_v2`, `migrate_v2_to_v3`, ...), fills missing keys with defaults and validates
+the result. A blob that is unreadable or from a newer firmware is kept untouched under
+`config.bak` and the device starts with defaults, so a downgrade never destroys settings silently.
+Migrations are pure functions over a JSON document and each one has a host test.
+
+| Section | Keys |
+| --- | --- |
+| `device` | `name`, `hostname` |
+| `modes` | `home_assistant` (report scans), `player` (play locally, milestone 3) |
+| `wifi` | `ssid`, `password`, `ap_password` |
+| `mqtt` | `enabled`, `host`, `port`, `tls`, `username`, `password`, `topic_prefix`, `discovery`, `discovery_prefix` |
+| `nfc` | `driver` (`auto` or a driver ID), `poll_interval_ms`, `removal_polls` |
+| `pins` | `i2c_sda`, `i2c_scl`, `spi_sck`, `spi_miso`, `spi_mosi`, `nfc_cs`, `nfc_reset`, `nfc_irq`, `led`, `buzzer`, `button_previous`, `button_play`, `button_next`, `encoder_a`, `encoder_b`, `encoder_button`, `battery_adc`, `i2s_bclk`, `i2s_lrck`, `i2s_dout`, `sd_cs` |
+| `feedback` | `led`, `led_count`, `led_brightness`, `buzzer` |
+| `security` | `admin_password` |
+| `updates` | `check`, `manifest_url` |
+| `time` | `ntp_server`, `timezone` (POSIX TZ string) |
+
+A pin of `-1` means "not connected". Pins are validated against the chip before they are saved:
+flash pins (GPIO 6 to 11 on the ESP32), PSRAM pins (GPIO 16 and 17 on WROVER modules) and
+input-only pins used as outputs (GPIO 34 to 39) are rejected, and a pin used twice is rejected
+unless both uses are on the same bus. Strapping pins (0, 2, 5, 12, 15) are allowed with a warning.
+
+Writing to tags is an action, not a mode: the writer arms for one tag and disarms after it.
+
+**Secrets.** `wifi.password`, `wifi.ap_password`, `mqtt.password` and `security.admin_password`
+are never returned by the API. A set secret reads back as `"********"`; sending `"********"` back
+keeps the stored value, sending `""` clears it.
+
+## 11. Networking and provisioning
+
+### Wi-Fi
+
+| State | Behaviour |
+| --- | --- |
+| Unprovisioned | Setup access point `Tapwave-XXXX` with captive portal, Improv BLE and Improv serial |
+| Connecting | Station mode with stored credentials, 20 second timeout per attempt |
+| Connected | Station only; mDNS, SNTP, HTTP and MQTT running |
+| Offline | Retries with backoff. After 60 seconds offline the setup access point opens alongside the station so credentials can be fixed, and closes again once the station connects |
+
+The access point is open unless `wifi.ap_password` is set; it only exists while the device has no
+working Wi-Fi. `XXXX` is the end of the MAC address, which is also printed on the serial console.
+
+### Captive portal
+
+A DNS server answers every name with the access point address, and the HTTP server redirects the
+operating systems' connectivity checks (`/generate_204`, `/hotspot-detect.html`,
+`/connecttest.txt`, `/ncsi.txt`) to the setup page. The setup page lists nearby networks, takes the
+password, and once the device joins shows its new address (`http://<hostname>.local`).
+
+### Improv Wi-Fi
+
+[Improv](https://www.improv-wifi.com) is the open standard that ESPHome, ESP Web Tools and Home
+Assistant use to onboard devices:
+
+- **Improv serial** is always on, on the USB serial port. It lets the browser-based installer and
+  the Improv website send Wi-Fi credentials right after flashing.
+- **Improv BLE** runs only while the device is unprovisioned. Home Assistant's Improv via BLE
+  integration discovers it and offers to set it up. The device starts in the authorized state (no
+  button press needed), the same as an ESPHome device without an authorizer. BLE is shut down after
+  provisioning to give its memory back.
+
+Both share one codec (`core/improv`) that implements commands 0x01 to 0x07: send Wi-Fi settings,
+current state or identify, device info, Wi-Fi scan, hostname, device name and network state.
+
+### Discovery and time
+
+mDNS announces `<hostname>.local` with `_http._tcp` and `_tapwave._tcp` (TXT: `version`, `id`).
+SNTP sets the clock so scan history and logs carry real timestamps; without it they show uptime.
